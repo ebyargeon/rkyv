@@ -11,7 +11,8 @@ extern crate proc_macro;
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{
-    parse_macro_input, spanned::Spanned, AttrStyle, DeriveInput, Error, GenericParam, Lit, Meta,
+    parse_macro_input, AttrStyle, DeriveInput, Error, Expr, ExprLit,
+    GenericParam, Lit, Meta,
 };
 
 #[derive(Default)]
@@ -21,31 +22,39 @@ struct Attributes {
 
 fn parse_attributes(input: &DeriveInput) -> Result<Attributes, TokenStream> {
     let mut result = Attributes::default();
-    for a in input.attrs.iter() {
-        if let AttrStyle::Outer = a.style {
-            if let Ok(Meta::NameValue(meta)) = a.parse_meta() {
-                if meta.path.is_ident("typename") {
-                    if result.typename.is_none() {
-                        if let Lit::Str(ref lit_str) = meta.lit {
-                            result.typename = Some(lit_str.value());
-                        } else {
-                            return Err(Error::new(
-                                meta.lit.span(),
-                                "typename must be set to a string",
-                            )
-                            .to_compile_error());
-                        }
-                    } else {
-                        return Err(Error::new(
-                            meta.span(),
-                            "typename attribute already specified",
-                        )
-                        .to_compile_error());
-                    }
-                }
-            }
+
+    for attr in input.attrs.iter() {
+        let AttrStyle::Outer = attr.style else {
+            continue;
+        };
+
+        let Meta::NameValue(ref meta) = attr.meta else {
+            continue;
+        };
+
+        if !meta.path.is_ident("typename") {
+            continue;
+        }
+
+        if result.typename.is_some() {
+            let msg = "typename attribute already specified";
+
+            return Err(Error::new_spanned(meta, msg).to_compile_error());
+        }
+
+        if let Expr::Lit(ExprLit {
+            lit: Lit::Str(ref lit_str),
+            ..
+        }) = meta.value
+        {
+            result.typename = Some(lit_str.value());
+        } else {
+            let msg = "typename must be set to a string";
+
+            return Err(Error::new_spanned(&meta.value, msg).to_compile_error());
         }
     }
+
     Ok(result)
 }
 
@@ -53,7 +62,9 @@ fn parse_attributes(input: &DeriveInput) -> Result<Attributes, TokenStream> {
 ///
 /// A custom name can be set using the attribute `#[typename = "..."]`.
 #[proc_macro_derive(TypeName, attributes(typename))]
-pub fn type_name_derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+pub fn type_name_derive(
+    input: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
 
     let type_name_impl = derive_type_name_impl(&input);
@@ -122,7 +133,8 @@ fn derive_type_name_impl(input: &DeriveInput) -> TokenStream {
         }
     };
 
-    let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
+    let (impl_generics, ty_generics, where_clause) =
+        input.generics.split_for_impl();
     let standard_derive_where_predicates = where_clause.map(|w| &w.predicates);
     quote! {
         const _: () = {

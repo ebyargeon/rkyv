@@ -14,14 +14,14 @@ proc-macro = true
 
 [dependencies]
 proc-macro2.workspace = true
-syn.workspace = true
+syn = { workspace = true, features = ["full"] }
 quote.workspace = true
 
 [features]
-default = []
-arbitrary_enum_discriminant = []
-archive_be = []
-archive_le = []
+default = ["little_endian"]
+native_endian = []
+little_endian = []
+big_endian = []
 copy = []
 strict = []
 
